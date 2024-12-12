@@ -1,0 +1,100 @@
+import os
+import time
+import pandas as pd
+import warnings
+import gspread
+from google.oauth2.service_account import Credentials
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+
+# Temporary directory for cloud environments
+TEMP_DIR = "/tmp"
+DOWNLOAD_PATH = os.path.join(TEMP_DIR, "ncrs.xlsx")
+LOG_PATH = os.path.join(TEMP_DIR, "logfile.log")
+
+# Chrome options for downloads
+chrome_options = Options()
+prefs = {
+    "download.default_directory": TEMP_DIR,  # Set download directory to temp
+    "profile.default_content_settings.popups": 0,
+    "directory_upgrade": True,
+    "safebrowsing.enabled": True,
+    "download.prompt_for_download": False
+}
+chrome_options.add_experimental_option("prefs", prefs)
+chrome_options.add_argument("--disable-popup-blocking")
+chrome_options.add_argument("--disable-notifications")
+chrome_options.add_argument("--log-level=3")
+
+# Set up ChromeDriver service
+service = Service("/usr/local/bin/chromedriver", log_path=LOG_PATH)  # Update path to ChromeDriver if needed
+driver = webdriver.Chrome(service=service, options=chrome_options)
+
+# Login details
+username = "sie-intern@flyzipline.com"
+password = "Zipline123"
+
+# Access the login page
+driver.get('https://www.1factory.com/signin')
+time.sleep(2)
+
+# Enter login credentials
+driver.find_element(By.ID, "js-username").send_keys(username)
+time.sleep(2)
+driver.find_element(By.ID, "js-pw").send_keys(password)
+time.sleep(2)
+driver.find_element(By.ID, "js-login").click()
+time.sleep(2)
+
+# Define a function to download files
+def download_files(key):
+    driver.get("https://www.1factory.com/" + key)
+    time.sleep(2)
+    driver.find_element(By.ID, "js-download").click()
+    time.sleep(5)  # Wait for the download to complete
+
+# Call the download function
+download_files("ncrs/list")
+
+# Close the browser after downloads
+driver.quit()
+
+# Suppress UserWarning from openpyxl for header/footer issues
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+
+# Google Sheets setup
+credentials_json = os.getenv("GOOGLE_SHEETS_CREDENTIALS")  # Load credentials from environment variable
+credentials = Credentials.from_service_account_info(json.loads(credentials_json))
+scoped_credentials = credentials.with_scopes(['https://www.googleapis.com/auth/spreadsheets'])
+client = gspread.authorize(scoped_credentials)
+
+# Open Google Sheet by ID
+spreadsheet_id = "1bL2B9EoedcxqDuMD6wb-eCyc0ZoX619D7zJsp9MBrfk"  # Replace with your Google Sheet ID
+sheet = client.open_by_key(spreadsheet_id).sheet1  # Access the first sheet
+
+# Load data from the downloaded Excel file
+df = pd.read_excel(DOWNLOAD_PATH)
+
+# Replace NaN values with an empty string
+df = df.fillna('')
+
+# Replace NaT values with an empty string
+df = df.replace({pd.NaT: ''})
+
+# Convert all data to strings
+df = df.astype(str)
+
+# Replace any 'NaT' or 'nan' strings
+df = df.replace({'NaT': '', 'nan': ''})
+
+# Convert DataFrame to list of lists (to fit Google Sheets API requirements)
+data = [df.columns.values.tolist()] + df.values.tolist()
+
+# Clear the existing sheet content
+sheet.clear()
+
+# Update the Google Sheet with new data
+sheet.update(range_name='A1', values=data)
+print("Data successfully uploaded to Google Sheet.") Explain what this code does line by line  This is the python code 
